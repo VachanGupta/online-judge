@@ -40,6 +40,30 @@ def db_session() -> Iterator[Session]:
         engine.dispose()
 
 
+@pytest.fixture
+def client(db_session: Session):
+    """A FastAPI TestClient backed by an isolated in-memory database.
+
+    The ``get_db`` dependency is overridden to share the test's in-memory engine
+    so data persists across requests within a test. The app is *not* entered as
+    a context manager, so its lifespan (which would create the real on-disk
+    schema) does not run — keeping tests hermetic.
+    """
+    from fastapi.testclient import TestClient
+
+    from app.db import get_db
+    from app.main import app
+
+    def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def _docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
