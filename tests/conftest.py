@@ -59,6 +59,22 @@ def docker_available() -> bool:
     return _docker_available()
 
 
+@pytest.fixture(scope="session")
+def sandbox_image(docker_available) -> str:
+    """Ensure the sandbox image exists (build it if needed) and return its tag.
+
+    Session-scoped so the (slow) build happens at most once per test run.
+    """
+    if not docker_available:
+        pytest.skip("Docker daemon not available")
+    from app.config import settings
+    from app.runner import sandbox
+
+    if not sandbox.image_exists():
+        sandbox.build_image()
+    return settings.sandbox_image
+
+
 def pytest_collection_modifyitems(config, items) -> None:
     """Skip ``@pytest.mark.docker`` tests when no Docker daemon is reachable."""
     if _docker_available():
