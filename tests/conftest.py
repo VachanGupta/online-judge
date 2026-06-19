@@ -8,9 +8,12 @@ the sandbox image is unavailable.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy import StaticPool, create_engine
@@ -99,6 +102,32 @@ def sandbox_image(docker_available) -> str:
     # supervisor.py baked into an old image.
     sandbox.build_image()
     return settings.sandbox_image
+
+
+@pytest.fixture
+def sandbox_workdir() -> Iterator[Path]:
+    """A scratch dir the sandbox container's non-root user (uid 1000) can access.
+
+    Created under ``run_root`` (default /tmp/oj-runs) and made world-traversable,
+    mirroring how the grader prepares scratch dirs. This matters on Linux, where
+    bind mounts preserve host permissions: pytest's ``tmp_path`` lives under a
+    ``0700`` directory the container user can't traverse (on macOS Docker Desktop
+    the virtiofs uid mapping hides this, but CI on Linux does not).
+    """
+    from app.config import settings
+
+    root = Path(settings.run_root)
+    root.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(root, 0o777)
+    except OSError:
+        pass
+    workdir = Path(tempfile.mkdtemp(prefix="oj-test-", dir=root))
+    os.chmod(workdir, 0o777)
+    try:
+        yield workdir
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def pytest_collection_modifyitems(config, items) -> None:
