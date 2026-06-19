@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "online-judge"
+version = "0.1.0"
+description = "A production-style online judge: sandboxed, resource-limited automated code grading."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Vachan Gupta" }]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+# Convenience entry points (also runnable as `python -m app.<module>`).
+oj-api = "app.main:run"
+oj-worker = "app.worker:run"
+oj-seed = "scripts.seed:main"
+oj-stress = "app.stress:main"
+
+[tool.setuptools]
+packages = ["app", "app.runner", "scripts"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "docker: requires a working Docker daemon and the built sandbox image (skipped if unavailable)",
+    "integration: end-to-end tests that exercise the DB and/or the sandbox",
+    "slow: tests that are intentionally slow (e.g. TLE demonstrations)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# A pragmatic, readable rule set: pyflakes, pycodestyle, isort, bugbear, comprehensions, pyupgrade.
+select = ["E", "F", "I", "B", "C4", "UP", "W"]
+ignore = ["E501"]  # line length handled by the formatter; long strings/SQL are fine.
