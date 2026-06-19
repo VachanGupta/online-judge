@@ -48,6 +48,9 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Example submissions are intentionally varied (and one is deliberately a syntax
+# error for the CE test); they are sample data, not project source.
+extend-exclude = ["examples"]
 
 [tool.ruff.lint]
 # A pragmatic, readable rule set: pyflakes, pycodestyle, isort, bugbear, comprehensions, pyupgrade.
