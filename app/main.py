@@ -33,12 +33,15 @@ from app.schemas import (
     ProblemCreate,
     ProblemDetail,
     ProblemSummary,
+    StressRequest,
+    StressResponse,
     SubmissionCreate,
     SubmissionCreated,
     SubmissionOut,
     SubmissionSummary,
     TestCaseOut,
 )
+from app.stress import ProgramSpec, StressParams, run_stress
 
 
 @asynccontextmanager
@@ -159,6 +162,28 @@ def list_submissions(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[Submission]:
     return repository.list_submissions(db, problem_id=problem_id, status=status_filter, limit=limit)
+
+
+@app.post("/stress-test", response_model=StressResponse)
+def stress_test(payload: StressRequest) -> StressResponse:
+    """Find a minimal input on which the optimized solution disagrees with the
+    brute-force one. Runs synchronously (it spawns many sandboxed containers);
+    iterations and size are bounded by the request schema. A sync handler keeps
+    the blocking Docker work off the event loop (FastAPI runs it in a threadpool).
+    """
+    result = run_stress(
+        ProgramSpec(payload.brute_source, payload.brute_language),
+        ProgramSpec(payload.optimized_source, payload.optimized_language),
+        ProgramSpec(payload.generator_source, payload.generator_language),
+        StressParams(
+            iterations=payload.iterations,
+            size=payload.size,
+            time_limit_ms=payload.time_limit_ms,
+            memory_limit_mb=payload.memory_limit_mb,
+            compare_mode=payload.compare_mode,
+        ),
+    )
+    return StressResponse(**result.to_dict())
 
 
 def run() -> None:  # pragma: no cover - thin uvicorn entry point

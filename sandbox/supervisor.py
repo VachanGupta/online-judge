@@ -112,6 +112,9 @@ def _child_env() -> dict[str, str]:
         "LC_ALL": "C.UTF-8",
         # Avoid writing .pyc into the (read-only at run time) work dir.
         "PYTHONDONTWRITEBYTECODE": "1",
+        # Deterministic hashing => deterministic dict/set ordering, so a Python
+        # program (notably a stress-test generator) is reproducible run to run.
+        "PYTHONHASHSEED": "0",
         # Keep CPU-time ~ wall-time for honest single-threaded programs.
         "OMP_NUM_THREADS": "1",
     }

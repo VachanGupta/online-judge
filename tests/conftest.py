@@ -94,8 +94,10 @@ def sandbox_image(docker_available) -> str:
     from app.config import settings
     from app.runner import sandbox
 
-    if not sandbox.image_exists():
-        sandbox.build_image()
+    # Always build (not just when missing): Docker layer caching makes this ~1s
+    # when nothing changed, but it guarantees tests never run against a stale
+    # supervisor.py baked into an old image.
+    sandbox.build_image()
     return settings.sandbox_image
 
 

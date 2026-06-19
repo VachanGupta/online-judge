@@ -138,3 +138,44 @@ class SubmissionSummary(BaseModel):
 
 class LanguagesOut(BaseModel):
     languages: list[str]
+
+
+# --------------------------------------------------------------------------- #
+# Stress-test mode
+# --------------------------------------------------------------------------- #
+
+
+class StressRequest(BaseModel):
+    brute_source: str = Field(min_length=1, max_length=1_000_000)
+    brute_language: str
+    optimized_source: str = Field(min_length=1, max_length=1_000_000)
+    optimized_language: str
+    generator_source: str = Field(min_length=1, max_length=1_000_000)
+    generator_language: str
+    # Bounded so a single request can't launch an unbounded container fan-out.
+    iterations: int = Field(default=100, ge=1, le=1000)
+    size: int = Field(default=12, ge=1, le=1000)
+    time_limit_ms: int = Field(default=2000, gt=0, le=15_000)
+    memory_limit_mb: int = Field(default=256, gt=0, le=2048)
+    compare_mode: CompareMode = CompareMode.TRIM
+
+    @field_validator("brute_language", "optimized_language", "generator_language")
+    @classmethod
+    def _known_language(cls, value: str) -> str:
+        if value not in supported_languages():
+            raise ValueError(f"unsupported language {value!r}; supported: {supported_languages()}")
+        return value
+
+
+class StressResponse(BaseModel):
+    found: bool
+    message: str
+    seed: int | None = None
+    base_size: int | None = None
+    shrunk_size: int | None = None
+    counterexample_input: str | None = None
+    brute_output: str | None = None
+    optimized_output: str | None = None
+    iterations_run: int = 0
+    oracle_failures: int = 0
+    manifest: dict = Field(default_factory=dict)
