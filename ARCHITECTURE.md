@@ -230,10 +230,11 @@ chosen design.
 bulletproof multi-tenant sandbox.** Containers share the host kernel (runc), so
 a kernel privilege-escalation bug escapes the container. What a production judge
 handling adversarial code at scale would add — and why — is documented in
-[`LIMITATIONS.md`](LIMITATIONS.md) *(Phase 8)*: seccomp profile tightening,
-`nsjail`/`isolate` or **gVisor**/Kata/Firecracker microVMs for a non-shared
-kernel, cgroups v2 driven directly, user-namespace remapping, and compile
-caching.
+[`LIMITATIONS.md`](LIMITATIONS.md): seccomp profile tightening, `nsjail`/`isolate`
+or **gVisor**/Kata/Firecracker microVMs for a non-shared kernel, cgroups v2
+driven directly, user-namespace remapping, and compile caching. The
+docker-compose deployment mounts the host Docker socket into the worker for
+convenience — itself a documented tradeoff (see `LIMITATIONS.md`).
 
 ---
 
@@ -273,3 +274,41 @@ caching.
 
 A background reaper (run periodically by the workers) requeues submissions
 abandoned by crashed workers and parks any that exhaust their attempts.
+
+---
+
+## 6. Testing strategy
+
+The suite is layered so most of it runs in milliseconds without Docker, and the
+parts that need the real sandbox are marked and isolated:
+
+- **Pure unit tests** (no Docker, no DB on disk): the verdict engine's
+  comparison and classification edge cases, the ddmin minimizer, the runner's
+  command-building and result-parsing logic, and the ORM mappings.
+- **Queue tests** (in-memory SQLite): atomic claim, ownership-guarded
+  completion/failure, and the stale-claim reaper.
+- **API tests** (FastAPI `TestClient` + in-memory SQLite): the HTTP contract.
+- **Docker-marked integration tests**: the runner against real containers (incl.
+  asserting the network is off and the root FS is read-only), the full
+  AC/WA/TLE/MLE/RE/CE verdict matrix across C++ and Python, the headline TLE
+  demonstration, and the stress-mode counterexample finder.
+
+`@pytest.mark.docker` tests auto-skip when no daemon is present, so the unit
+layer stays runnable anywhere. CI runs the two layers as separate jobs
+(`pytest -m "not docker"` for fast feedback; `pytest -m docker` for the real
+sandbox), proving the isolation works on a clean Linux host with cgroups v2.
+
+## 7. Scale-up path
+
+The seams are deliberate, so growth is a swap, not a rewrite:
+
+- **Storage:** point `OJ_DATABASE_URL` at PostgreSQL; the models are portable and
+  the claim becomes `SELECT … FOR UPDATE SKIP LOCKED`.
+- **Queue:** replace the DB-backed queue with Redis/RQ or Celery; the worker loop
+  becomes a task consumer and the grader/runner are unchanged.
+- **Isolation:** swap the OCI runtime for gVisor or a microVM (see
+  `LIMITATIONS.md`) — the runner already shells out to `docker run`, so this is a
+  flag/runtime change.
+- **Languages:** add an entry to `app.languages`; nothing else changes.
+- **Throughput:** a warm container pool and compile caching remove per-test
+  startup cost.

@@ -1,0 +1,50 @@
+# Bring the whole judge up with one command:
+#
+#     docker compose up --build
+#
+# Then open http://localhost:8000/docs and submit, or run the seed script:
+#
+#     docker compose exec api python -m scripts.seed
+#
+# Architecture note: the worker launches sandbox containers as *siblings* on the
+# host Docker daemon (the socket is mounted in). Two consequences are handled
+# below and explained in ARCHITECTURE.md §4 / LIMITATIONS.md:
+#   1. The per-run scratch dir is bind-mounted at the SAME absolute path
+#      (/tmp/oj-runs) in the worker and on the host, so the path the worker hands
+#      to `docker run -v` resolves to the same files the daemon sees.
+#   2. The SQLite DB lives on a NAMED VOLUME (not a host bind mount), which has
+#      reliable POSIX locking — important for WAL under concurrent workers.
+
+services:
+  api:
+    build: .
+    image: online-judge-app:latest
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      OJ_DATABASE_URL: sqlite:////data/judge.db
+    volumes:
+      - ojdata:/data
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: .
+    image: online-judge-app:latest
+    command: python -m app.worker --workers 2
+    environment:
+      OJ_DATABASE_URL: sqlite:////data/judge.db
+      OJ_RUN_ROOT: /tmp/oj-runs
+    volumes:
+      - ojdata:/data
+      # Mounting the host Docker socket lets the worker launch sandbox containers.
+      # This is convenient for a demo but grants host-root-equivalent access — see
+      # LIMITATIONS.md for why a production deployment would use a remote/rootless
+      # daemon, a microVM runtime, or a dedicated build node instead.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same absolute path on host and in the container (see note above).
+      - /tmp/oj-runs:/tmp/oj-runs
+    depends_on:
+      - api
+
+volumes:
+  ojdata:

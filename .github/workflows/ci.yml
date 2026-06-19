@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-unit:
+    name: Lint + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check app tests scripts sandbox
+      - name: Unit tests (no Docker required)
+        run: pytest -m "not docker" -q
+
+  integration:
+    name: Integration tests (Docker sandbox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      # ubuntu-latest ships a working Docker daemon with cgroups v2, so the
+      # sandbox tests (including OOM/MLE detection and the TLE demo) run for real.
+      - name: Build sandbox image
+        run: docker build -t online-judge-sandbox:latest sandbox/
+      - name: Docker-backed tests
+        run: pytest -m docker -q

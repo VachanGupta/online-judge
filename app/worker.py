@@ -157,7 +157,15 @@ def _worker_process(worker_index: int) -> None:  # pragma: no cover - runs in a 
 
 def run_pool(count: int) -> None:  # pragma: no cover - process orchestration
     """Spawn ``count`` worker processes and supervise them until interrupted."""
+    from app.runner import sandbox
+
     init_db()
+    # Build the sandbox image up front (idempotent) so the first submission
+    # doesn't pay for it — and so `docker compose up` just works.
+    if not sandbox.image_exists():
+        print("building sandbox image...", flush=True)
+        sandbox.build_image()
+
     ctx = multiprocessing.get_context("spawn")
     procs = [ctx.Process(target=_worker_process, args=(i,), daemon=False) for i in range(count)]
     for proc in procs:
