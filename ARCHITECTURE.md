@@ -239,4 +239,37 @@ caching.
 
 ## 5. Data flow (request → verdict)
 
-Filled in as the API and worker land *(Phases 4–5)*.
+1. **Submit.** `POST /submissions` validates the problem exists and the language
+   is supported, then inserts a `Submission` row with `status=pending` and
+   returns `202 Accepted` with the id. The request path does *no* grading, so it
+   stays fast and the API and judging capacity scale independently.
+
+2. **Claim.** A worker process (one of a pool) atomically claims the oldest
+   pending row (`queue.claim_next`), flipping it to `running`, stamping
+   `worker_id`/`claimed_at`, and incrementing `attempts`. The claim is one
+   `UPDATE … RETURNING` statement — race-free across processes (§3.3). The
+   worker immediately commits and ends the read transaction so it holds no DB
+   lock during the slow work that follows.
+
+3. **Grade** (`grader.grade_submission`, outside any DB transaction):
+   - Write the source into a fresh per-submission scratch dir.
+   - **Compile** in the sandbox (a `py_compile` syntax check for Python). A
+     non-clean compile short-circuits to **CE** with the captured diagnostics.
+   - **Run each test case** in its own fresh hardened container (§3.1): the
+     supervisor feeds the test input on stdin, measures the run, and returns a
+     JSON result; `verdict.classify_test` turns it into a per-test verdict.
+   - Aggregate fail-fast (stop at the first non-AC) into the submission verdict;
+     track worst-case time/memory and the score.
+
+4. **Persist.** `queue.complete_submission` writes the verdict, per-test
+   `TestResult` rows, and resource summary in one short transaction — guarded by
+   `worker_id`+`status` so a reaped-and-reassigned claim can't double-write. An
+   infrastructure failure instead requeues (within the attempt budget) or parks
+   the submission in `error`/IE.
+
+5. **Poll.** `GET /submissions/{id}` returns the current `status`, the `verdict`
+   once graded, the compile output, the worst-case time/memory, and the full
+   per-test report.
+
+A background reaper (run periodically by the workers) requeues submissions
+abandoned by crashed workers and parks any that exhaust their attempts.

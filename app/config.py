@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # A submission stuck in RUNNING longer than this (e.g. a crashed worker) is
     # requeued by the stale-claim reaper.
     stale_claim_timeout_s: int = 300
+    # Cap on claim attempts before a repeatedly-failing submission is parked in a
+    # terminal error state instead of being retried forever.
+    max_attempts: int = 3
+    # How often a worker runs the stale-claim reaper sweep (seconds).
+    reaper_interval_s: float = 30.0
     # Stop grading at the first non-AC test (standard judge behaviour). When
     # False, every test runs so the full per-test report is always populated.
     fail_fast: bool = True
